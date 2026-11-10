@@ -1,0 +1,274 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kochangkwon/promptcut/schema/edit-plan.schema.json",
+  "title": "promptcut edit plan",
+  "description": "The only contract between the engine and every other layer. The UI, the AI planning layer and the CLI all produce this document; the engine reads nothing else.",
+  "type": "object",
+  "required": ["schema_version", "output", "clips"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Bumped whenever the format changes incompatibly."
+    },
+    "output": { "$ref": "#/$defs/output" },
+    "subjects": {
+      "type": "array",
+      "description": "People or pets whose age can be derived for age captions.",
+      "items": { "$ref": "#/$defs/subject" },
+      "default": []
+    },
+    "clips": {
+      "type": "array",
+      "description": "Clips in final playback order. An empty list is a valid plan that renders nothing.",
+      "items": { "$ref": "#/$defs/clip" }
+    },
+    "caption_styles": {
+      "type": "object",
+      "description": "Named caption styles. A clip caption references one by key; 'default' must exist if any caption omits style_ref.",
+      "additionalProperties": { "$ref": "#/$defs/caption_style" },
+      "default": {}
+    },
+    "color_grade": { "$ref": "#/$defs/color_grade" },
+    "audio": { "$ref": "#/$defs/audio" },
+    "title_card": {
+      "$ref": "#/$defs/title_card",
+      "description": "Optional opening card shown before the first clip."
+    }
+  },
+  "$defs": {
+    "output": {
+      "type": "object",
+      "required": ["width", "height", "fps"],
+      "additionalProperties": false,
+      "properties": {
+        "width": { "type": "integer", "minimum": 16, "maximum": 7680 },
+        "height": { "type": "integer", "minimum": 16, "maximum": 4320 },
+        "fps": { "type": "number", "exclusiveMinimum": 0, "maximum": 120 },
+        "fit": {
+          "description": "contain letterboxes a mismatched clip; cover crops it to fill.",
+          "enum": ["contain", "cover"],
+          "default": "contain"
+        },
+        "background": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$",
+          "default": "#000000",
+          "description": "Letterbox colour when fit is contain."
+        },
+        "video_codec": { "enum": ["h264", "hevc"], "default": "h264" },
+        "audio_codec": { "enum": ["aac"], "default": "aac" },
+        "crf": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 51,
+          "default": 20,
+          "description": "Lower is better quality and a larger file."
+        },
+        "preset": {
+          "enum": ["ultrafast", "veryfast", "medium", "slow"],
+          "default": "veryfast"
+        }
+      }
+    },
+    "subject": {
+      "type": "object",
+      "required": ["id", "name", "birth_date"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "birth_date": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "description": "Local date. Age is computed against the clip's recorded_at."
+        }
+      }
+    },
+    "clip": {
+      "type": "object",
+      "required": ["id", "source", "in_ms", "out_ms"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "source": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Absolute path to the source file. Never modified."
+        },
+        "in_ms": { "type": "integer", "minimum": 0 },
+        "out_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Exclusive end point. Must be greater than in_ms."
+        },
+        "speed": {
+          "type": "number",
+          "minimum": 0.25,
+          "maximum": 4,
+          "default": 1,
+          "description": "1 is normal. Values below 1 slow the clip down."
+        },
+        "mute": { "type": "boolean", "default": false },
+        "recorded_at": {
+          "type": ["string", "null"],
+          "description": "RFC 3339 timestamp used by date and age captions. Null when unknown.",
+          "default": null
+        },
+        "recorded_at_estimated": {
+          "type": "boolean",
+          "default": false,
+          "description": "True when recorded_at fell back to file mtime."
+        },
+        "captions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/caption" },
+          "default": []
+        },
+        "transition_out": {
+          "$ref": "#/$defs/transition",
+          "description": "Transition into the next clip. Ignored on the last clip."
+        }
+      }
+    },
+    "caption": {
+      "type": "object",
+      "required": ["id", "kind"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "kind": {
+          "description": "date renders the clip's recorded_at; age renders subject ages at that date; text renders the literal text field.",
+          "enum": ["date", "age", "text"]
+        },
+        "text": {
+          "type": ["string", "null"],
+          "maxLength": 200,
+          "default": null,
+          "description": "Required when kind is text; ignored otherwise."
+        },
+        "date_format": {
+          "type": "string",
+          "default": "YYYY.MM.DD",
+          "description": "Used when kind is date. Tokens: YYYY, MM, DD."
+        },
+        "subject_ids": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/id" },
+          "default": [],
+          "description": "Used when kind is age. Each id must exist in subjects."
+        },
+        "start_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0,
+          "description": "Offset from the clip's trimmed start."
+        },
+        "duration_ms": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "default": null,
+          "description": "Null means the caption stays for the rest of the clip."
+        },
+        "style_ref": {
+          "type": "string",
+          "default": "default",
+          "description": "Key into caption_styles."
+        }
+      }
+    },
+    "caption_style": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "font_family": { "type": "string", "default": "Apple SD Gothic Neo" },
+        "font_size_px": { "type": "integer", "minimum": 8, "maximum": 400, "default": 48 },
+        "color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$", "default": "#FFFFFF" },
+        "position": {
+          "enum": [
+            "top-left", "top-center", "top-right",
+            "middle-center",
+            "bottom-left", "bottom-center", "bottom-right"
+          ],
+          "default": "bottom-center"
+        },
+        "margin_px": { "type": "integer", "minimum": 0, "maximum": 1000, "default": 64 },
+        "shadow": { "type": "boolean", "default": true },
+        "box": {
+          "type": "boolean",
+          "default": false,
+          "description": "Draw a translucent plate behind the text."
+        },
+        "fade_ms": { "type": "integer", "minimum": 0, "maximum": 5000, "default": 300 }
+      }
+    },
+    "transition": {
+      "type": "object",
+      "required": ["kind"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["none", "fade", "dissolve", "wipe"] },
+        "duration_ms": { "type": "integer", "minimum": 0, "maximum": 5000, "default": 500 }
+      }
+    },
+    "color_grade": {
+      "type": "object",
+      "required": ["kind"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["none", "warm", "cool", "vintage", "mono"] },
+        "intensity": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.4 }
+      }
+    },
+    "audio": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "music": {
+          "type": ["object", "null"],
+          "default": null,
+          "required": ["source"],
+          "additionalProperties": false,
+          "properties": {
+            "source": { "type": "string", "minLength": 1 },
+            "gain_db": { "type": "number", "minimum": -60, "maximum": 12, "default": -6 },
+            "fade_in_ms": { "type": "integer", "minimum": 0, "maximum": 20000, "default": 1500 },
+            "fade_out_ms": { "type": "integer", "minimum": 0, "maximum": 20000, "default": 2500 },
+            "loop": {
+              "type": "boolean",
+              "default": true,
+              "description": "Repeat the track when it is shorter than the film."
+            }
+          }
+        },
+        "source_gain_db": {
+          "type": "number",
+          "minimum": -60,
+          "maximum": 12,
+          "default": 0,
+          "description": "Applied to the clips' own audio. -60 is effectively silent."
+        }
+      }
+    },
+    "title_card": {
+      "type": ["object", "null"],
+      "default": null,
+      "required": ["text"],
+      "additionalProperties": false,
+      "properties": {
+        "text": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "subtext": { "type": ["string", "null"], "maxLength": 200, "default": null },
+        "duration_ms": { "type": "integer", "minimum": 200, "maximum": 20000, "default": 2500 },
+        "background": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$", "default": "#000000" },
+        "style_ref": { "type": "string", "default": "default" }
+      }
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,40}$",
+      "description": "Stable identifier, unique within its collection."
+    }
+  }
+}

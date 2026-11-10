@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>promptcut</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div class="app">
+
+  <header class="titlebar">
+    <div class="traffic" aria-hidden="true"><span></span><span></span><span></span></div>
+    <h1 class="project-name" id="projectName">Untitled project</h1>
+    <div class="titlebar-actions">
+      <button type="button" class="btn btn-sm" id="btnPlanJson">Plan JSON</button>
+      <button type="button" class="btn btn-sm" id="btnPreview">미리보기 렌더</button>
+      <button type="button" class="btn btn-sm btn-primary" id="btnExport">mp4 내보내기</button>
+    </div>
+  </header>
+
+  <main class="main">
+
+    <section class="panel panel-left" aria-label="영상과 설정">
+      <div class="panel-head">
+        <span>내 영상</span>
+        <button type="button" class="btn btn-xs" id="btnAddMedia">추가</button>
+      </div>
+      <div class="media-list" id="mediaList"></div>
+
+      <div class="settings">
+        <details class="setting" id="panelSubjects">
+          <summary><span>피사체</span><span class="setting-value" id="subjectsSummary"></span></summary>
+          <div class="setting-body">
+            <div id="subjectRows"></div>
+            <button type="button" class="btn btn-xs" id="btnAddSubject">피사체 추가</button>
+          </div>
+        </details>
+
+        <details class="setting">
+          <summary><span>배경음악</span><span class="setting-value" id="musicSummary"></span></summary>
+          <div class="setting-body">
+            <label class="field">
+              <span>음악 파일</span>
+              <input type="text" id="musicPath" placeholder="/path/to/song.mp3">
+            </label>
+            <label class="field">
+              <span>음악 음량 <output id="musicGainOut"></output></span>
+              <input type="range" id="musicGain" min="-30" max="6" step="1">
+            </label>
+            <label class="field">
+              <span>원본 음량 <output id="sourceGainOut"></output></span>
+              <input type="range" id="sourceGain" min="-60" max="6" step="1">
+            </label>
+          </div>
+        </details>
+
+        <details class="setting">
+          <summary><span>자막 스타일</span><span class="setting-value" id="captionSummary"></span></summary>
+          <div class="setting-body">
+            <label class="field">
+              <span>크기 <output id="fontSizeOut"></output></span>
+              <input type="range" id="fontSize" min="20" max="120" step="2">
+            </label>
+            <label class="field">
+              <span>위치</span>
+              <select id="captionPosition">
+                <option value="bottom-center">하단 중앙</option>
+                <option value="bottom-left">하단 왼쪽</option>
+                <option value="top-center">상단 중앙</option>
+                <option value="middle-center">가운데</option>
+              </select>
+            </label>
+            <label class="check"><input type="checkbox" id="capDate"> 날짜 자막</label>
+            <label class="check"><input type="checkbox" id="capAge"> 나이 자막</label>
+          </div>
+        </details>
+
+        <details class="setting">
+          <summary><span>출력</span><span class="setting-value" id="outputSummary"></span></summary>
+          <div class="setting-body">
+            <label class="field">
+              <span>해상도</span>
+              <select id="outputSize">
+                <option value="1920x1080">1920 × 1080 (가로)</option>
+                <option value="1280x720">1280 × 720 (가로)</option>
+                <option value="1080x1920">1080 × 1920 (세로)</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>색감</span>
+              <select id="colorGrade">
+                <option value="none">원본</option>
+                <option value="warm">따뜻한 톤</option>
+                <option value="cool">차분한 톤</option>
+                <option value="vintage">빈티지</option>
+                <option value="mono">흑백</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>전환 효과</span>
+              <select id="transition">
+                <option value="none">없음</option>
+                <option value="fade">부드럽게 사라짐</option>
+                <option value="dissolve">디졸브</option>
+              </select>
+            </label>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <section class="stage" aria-label="미리보기">
+      <div class="monitor">
+        <div class="monitor-frame" id="monitorFrame">
+          <div class="monitor-empty" id="monitorEmpty">클립을 추가하세요</div>
+          <div class="monitor-caption" id="monitorCaption"></div>
+        </div>
+      </div>
+      <div class="transport">
+        <span class="time" id="timeLeft">0:00 / 0:00</span>
+        <div class="transport-buttons">
+          <button type="button" class="icon-btn" id="btnPrev" aria-label="이전 클립">⏮</button>
+          <button type="button" class="icon-btn icon-btn-main" id="btnPlay" aria-label="재생">▶</button>
+          <button type="button" class="icon-btn" id="btnNext" aria-label="다음 클립">⏭</button>
+        </div>
+        <span class="time time-right" id="timeRight"></span>
+      </div>
+      <div class="inspector" id="inspector"></div>
+    </section>
+
+    <section class="panel panel-right" aria-label="편집 요청">
+      <div class="panel-head"><span>편집 요청</span><span class="mock-badge">mock</span></div>
+      <div class="chat-log" id="chatLog"></div>
+      <form class="chat-input" id="chatForm">
+        <input type="text" id="chatInput" placeholder="요청을 입력하세요" autocomplete="off" aria-label="편집 요청 입력">
+        <button type="submit" class="send-btn" aria-label="보내기">↑</button>
+      </form>
+    </section>
+
+  </main>
+
+  <section class="timeline-wrap" aria-label="타임라인">
+    <div class="timeline-head">
+      <span>타임라인</span>
+      <div class="zoom">
+        <button type="button" class="icon-btn icon-btn-sm" id="btnZoomOut" aria-label="축소">−</button>
+        <input type="range" id="zoom" min="1" max="12" step="1" aria-label="타임라인 확대">
+        <button type="button" class="icon-btn icon-btn-sm" id="btnZoomIn" aria-label="확대">+</button>
+      </div>
+    </div>
+    <div class="timeline">
+      <div class="track-labels">
+        <div class="track-label ruler-label"></div>
+        <div class="track-label">영상</div>
+        <div class="track-label">자막</div>
+        <div class="track-label">음악</div>
+      </div>
+      <div class="track-scroll" id="trackScroll">
+        <div class="track-area" id="trackArea">
+          <div class="ruler" id="ruler"></div>
+          <div class="track track-video" id="trackVideo"></div>
+          <div class="track track-caption" id="trackCaption"></div>
+          <div class="track track-music" id="trackMusic"></div>
+          <div class="playhead" id="playhead"><span class="playhead-grip"></span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="statusbar">
+    <span id="statusLeft"></span>
+    <span id="statusRight"></span>
+  </footer>
+
+</div>
+
+<dialog id="planDialog" class="dialog">
+  <div class="dialog-head">
+    <strong>편집 계획 JSON</strong>
+    <button type="button" class="btn btn-xs" id="btnClosePlan">닫기</button>
+  </div>
+  <p class="dialog-note" id="planValidation"></p>
+  <pre class="dialog-body" id="planJson"></pre>
+</dialog>
+
+<script src="mock-data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
