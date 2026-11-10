@@ -96,6 +96,7 @@ promptcut/
 ├─ doc/                  documentation
 ├─ schema/               JSON Schema for the edit plan
 ├─ example/              example plan
+├─ sample/               sample clips and music, plus the script that makes them
 ├─ ui/                   browser front end (step 3)
 │   ├─ index.html
 │   ├─ app.css
@@ -107,6 +108,7 @@ promptcut/
 │   ├─ planner/
 │   └─ server/
 ├─ tests/
+├─ serve.py              static server with Range support
 └─ run.sh                serve the UI locally
 ```
 
@@ -118,7 +120,11 @@ Requires Python 3 only; no install step and no backend yet.
 ./run.sh
 ```
 
-This serves `ui/` on http://localhost:8765 and opens it. The UI runs on mock data, so no video files, API keys or ffmpeg are needed at this stage.
+This serves the repo root on http://localhost:8765/ui/ and opens it. The root rather than `ui/`, because the page loads the sample media from `../sample/`.
+
+It runs `serve.py` rather than `python3 -m http.server`, which ignores Range requests. A video served without Range support reports `seekable = [0, 0]`: it plays from the start but will not scrub, so the playhead and the picture drift apart. That is the only reason `serve.py` exists.
+
+The UI needs no API key and no ffmpeg. It plays the clips in `sample/`, and the chat panel is answered by a rule-based stand-in rather than a model.
 
 ## Open decisions
 

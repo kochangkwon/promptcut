@@ -42,6 +42,25 @@ Originals are never modified. Actual encoding happens only on preview render and
 
 Only metadata is sent to the AI: recording dates, durations, file names and subject details. Frame-level scene analysis, which would send extracted images, is deferred and will be opt-in.
 
+## Running the UI
+
+```
+./run.sh
+```
+
+Python 3 is the only requirement; no ffmpeg, no API key, no install step. It
+serves the repo on http://localhost:8765/ui/ and opens it.
+
+The UI runs on the two sample clips and the sample track in `sample/`, so the
+preview plays real video and the timeline shows real frames. The chat panel is
+answered by a local rule-based stand-in, not by an AI — try "시간순으로 정렬해
+줘", "자막 크게", "따뜻한 톤으로". File picking, rendering and export are not
+wired up yet; "Plan JSON" shows the edit plan those steps will consume.
+
+`sample/make-samples.sh` regenerates the sample media with ffmpeg. The two
+clips deliberately differ — landscape vs portrait, 30fps vs 24fps, stereo vs
+silent — so they exercise the normalisation that concatenation needs.
+
 ## Documentation
 
 - [`doc/plan.md`](doc/plan.md) — development order and known risks

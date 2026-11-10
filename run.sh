@@ -10,12 +10,14 @@ if ! command -v python3 >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "promptcut UI  ->  http://localhost:${PORT}"
+URL="http://localhost:${PORT}/ui/"
+echo "promptcut UI  ->  ${URL}"
 echo "Stop with Ctrl-C."
 
 if command -v open >/dev/null 2>&1; then
-  (sleep 1; open "http://localhost:${PORT}") &
+  (sleep 1; open "${URL}") &
 fi
 
-cd "${DIR}/ui"
-exec python3 -m http.server "${PORT}" --bind 127.0.0.1
+# serve.py, not `python3 -m http.server`: the latter ignores Range requests,
+# which leaves the sample videos unseekable in the preview
+exec python3 "${DIR}/serve.py" "${PORT}"

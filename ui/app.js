@@ -36,7 +36,7 @@ const state = {
             video_codec: 'h264', audio_codec: 'aac', crf: 20, preset: 'veryfast' },
   selectedClipId: null,
   playheadMs: 0,
-  zoom: 4,
+  zoom: 12,
   chat: [],
   pendingChange: null,
   render: { status: 'idle', percent: 0, kind: null },
@@ -201,7 +201,14 @@ function buildPlan() {
     clips,
     color_grade: { ...state.colorGrade },
     audio: {
-      music: state.audio.music && state.audio.music.source ? { ...state.audio.music } : null,
+      // src and poster are browser-only fields; the plan carries paths alone
+      music: state.audio.music && state.audio.music.source ? {
+        source: state.audio.music.source,
+        gain_db: state.audio.music.gain_db,
+        fade_in_ms: state.audio.music.fade_in_ms,
+        fade_out_ms: state.audio.music.fade_out_ms,
+        loop: state.audio.music.loop
+      } : null,
       source_gain_db: state.audio.source_gain_db
     }
   };
@@ -400,6 +407,8 @@ const el = {
   monitorFrame: $('monitorFrame'),
   monitorEmpty: $('monitorEmpty'),
   monitorCaption: $('monitorCaption'),
+  video: $('monitorVideo'),
+  music: $('musicAudio'),
   timeLeft: $('timeLeft'),
   timeRight: $('timeRight'),
   inspector: $('inspector'),
@@ -445,8 +454,11 @@ function renderMediaList() {
     item.className = 'media-item';
     if (clip && clip.id === state.selectedClipId) item.classList.add('selected');
     if (!used.has(m.id)) item.classList.add('unused');
+    const thumbStyle = m.poster
+      ? `background-color:${m.color};background-image:url('${m.poster}')`
+      : `background-color:${m.color}`;
     item.innerHTML = `
-      <div class="media-thumb" style="background:${m.color}">
+      <div class="media-thumb" style="${thumbStyle}">
         <span class="media-dur">${fmtTime(m.duration_ms)}</span>
       </div>
       <div class="media-meta">
@@ -572,8 +584,11 @@ function renderTimeline() {
     node.style.width = `${Math.max(len * scale, 8)}px`;
     const segments = Math.max(1, Math.round((len * scale) / 60));
     const strips = Array.from({ length: segments }, (_, i) => {
-      const shade = i % 2 ? 'brightness(1.12)' : 'brightness(0.94)';
-      return `<span class="strip" style="background:${media ? media.color : '#444'};filter:${shade}"></span>`;
+      const shade = i % 2 ? 'brightness(1.08)' : 'brightness(0.92)';
+      const bg = media && media.poster
+        ? `background-color:${media.color};background-image:url('${media.poster}')`
+        : `background-color:${media ? media.color : '#444'}`;
+      return `<span class="strip" style="${bg};filter:${shade}"></span>`;
     }).join('');
     node.innerHTML = `${strips}
       <span class="clip-label">${media ? fmtDate(media.recorded_at) : '?'} · ${fmtTime(len)}</span>
@@ -639,10 +654,69 @@ function renderPlayhead() {
   el.playhead.style.left = `${state.playheadMs * pxPerMs()}px`;
 }
 
+/** HTML media volume is linear 0–1; the plan speaks in dB. */
+function dbToGain(db) {
+  if (db <= -60) return 0;
+  return Math.min(1, Math.pow(10, db / 20));
+}
+
+let currentSrc = null;
+
+/** Points the <video> at the clip under the playhead and keeps it in step. */
+function syncVideo(found) {
+  const v = el.video;
+  if (!found) {
+    v.classList.remove('on');
+    v.pause();
+    v.removeAttribute('src');
+    currentSrc = null;
+    return;
+  }
+  const media = mediaOf(found.clip);
+  const src = media && media.src;
+  v.classList.toggle('on', !!src);
+  if (!src) { currentSrc = null; return; }
+
+  const want = (found.clip.in_ms + found.offset) / 1000;
+  const seek = () => { try { v.currentTime = want; } catch (e) { /* not loaded yet */ } };
+
+  if (src !== currentSrc) {
+    currentSrc = src;
+    v.src = src;
+    v.onloadedmetadata = seek;      // currentTime before metadata is ignored
+    seek();
+    if (playing) v.play().catch(() => {});
+  } else if (!playing || Math.abs(v.currentTime - want) > 0.3) {
+    seek();
+  }
+
+  v.muted = found.clip.mute || state.audio.source_gain_db <= -60;
+  v.volume = dbToGain(state.audio.source_gain_db);
+}
+
+/** Background music plays alongside, looping the way the plan says it will. */
+function syncMusic() {
+  const a = el.music;
+  const m = state.audio.music;
+  if (!m || !m.src) { a.pause(); a.removeAttribute('src'); return; }
+  if (a.getAttribute('src') !== m.src) { a.src = m.src; }
+  a.loop = !!m.loop;
+  a.volume = dbToGain(m.gain_db);
+
+  const want = m.loop && a.duration ? (state.playheadMs / 1000) % a.duration
+                                    : state.playheadMs / 1000;
+  if (!playing || Math.abs(a.currentTime - want) > 0.4) {
+    try { a.currentTime = want; } catch (e) { /* not loaded yet */ }
+  }
+}
+
 function renderPreview() {
   const total = totalLength();
   const found = total > 0 ? clipAt(state.playheadMs) : null;
   el.monitorFrame.classList.toggle('portrait', state.output.height > state.output.width);
+  el.monitorFrame.classList.toggle('fit-cover', state.output.fit === 'cover');
+  syncVideo(found);
+  syncMusic();
 
   if (!found) {
     el.monitorEmpty.hidden = false;
@@ -655,7 +729,7 @@ function renderPreview() {
 
   el.monitorEmpty.hidden = true;
   const media = mediaOf(found.clip);
-  el.monitorFrame.style.background = media ? media.color : '#15151a';
+  el.monitorFrame.style.background = media && media.src ? '#000' : (media ? media.color : '#15151a');
 
   const lines = found.clip.captions
     .filter((cap) => {
@@ -1008,13 +1082,27 @@ let playing = false;
 let lastFrame = 0;
 
 function togglePlay() {
+  if (!playing && totalLength() <= 0) return;
   playing = !playing;
   el.btnPlay.textContent = playing ? '❚❚' : '▶';
   el.btnPlay.ariaLabel = playing ? '일시정지' : '재생';
   if (playing) {
+    el.video.play().catch(() => {});
+    el.music.play().catch(() => {});
     lastFrame = performance.now();
     requestAnimationFrame(step);
+  } else {
+    el.video.pause();
+    el.music.pause();
   }
+}
+
+function stopPlayback() {
+  playing = false;
+  el.btnPlay.textContent = '▶';
+  el.btnPlay.ariaLabel = '재생';
+  el.video.pause();
+  el.music.pause();
 }
 
 function step(now) {
@@ -1023,7 +1111,7 @@ function step(now) {
   lastFrame = now;
   const total = totalLength();
   let next = state.playheadMs + dt;
-  if (next >= total) { next = total; playing = false; el.btnPlay.textContent = '▶'; }
+  if (next >= total) { next = total; stopPlayback(); }
   setPlayhead(next);
   if (playing) requestAnimationFrame(step);
 }
@@ -1116,8 +1204,8 @@ $('btnZoomOut').addEventListener('click', () => {
 $('btnAddMedia').addEventListener('click', () => {
   pushChat({
     type: 'sys',
-    text: '파일 선택은 백엔드가 붙는 7단계에서 동작합니다. 지금은 왼쪽 목록의 ' +
-          '목 데이터를 클릭해 타임라인에 올릴 수 있습니다.'
+    text: '파일 선택은 백엔드가 붙는 7단계에서 동작합니다. 지금은 sample/ 폴더의 ' +
+          '샘플 영상 2개로 시험하실 수 있습니다. 목록에서 클릭하거나 타임라인으로 끌어 넣으세요.'
   });
 });
 
@@ -1128,16 +1216,24 @@ $('btnAddSubject').addEventListener('click', () => {
 });
 
 $('musicPath').addEventListener('change', (e) => {
-  state.audio.music.source = e.target.value.trim();
+  const value = e.target.value.trim();
+  state.audio.music.source = value;
+  // a path typed here is not something the browser can load; only the bundled
+  // sample has a src, so clear it when the path is changed by hand
+  if (value !== MOCK.music.source) delete state.audio.music.src;
+  else state.audio.music.src = MOCK.music.src;
   renderAll();
 });
 $('musicGain').addEventListener('input', (e) => {
   state.audio.music.gain_db = parseInt(e.target.value, 10);
   $('musicGainOut').textContent = `${state.audio.music.gain_db} dB`;
+  el.music.volume = dbToGain(state.audio.music.gain_db);
 });
 $('sourceGain').addEventListener('input', (e) => {
   state.audio.source_gain_db = parseInt(e.target.value, 10);
   $('sourceGainOut').textContent = `${state.audio.source_gain_db} dB`;
+  el.video.volume = dbToGain(state.audio.source_gain_db);
+  el.video.muted = state.audio.source_gain_db <= -60;
 });
 $('fontSize').addEventListener('input', (e) => {
   state.captionStyle.font_size_px = parseInt(e.target.value, 10);

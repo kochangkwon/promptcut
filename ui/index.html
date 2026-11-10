@@ -113,9 +113,11 @@
     <section class="stage" aria-label="미리보기">
       <div class="monitor">
         <div class="monitor-frame" id="monitorFrame">
+          <video class="monitor-video" id="monitorVideo" playsinline preload="auto"></video>
           <div class="monitor-empty" id="monitorEmpty">클립을 추가하세요</div>
           <div class="monitor-caption" id="monitorCaption"></div>
         </div>
+        <audio id="musicAudio" preload="auto"></audio>
       </div>
       <div class="transport">
         <span class="time" id="timeLeft">0:00 / 0:00</span>
@@ -145,7 +147,7 @@
       <span>타임라인</span>
       <div class="zoom">
         <button type="button" class="icon-btn icon-btn-sm" id="btnZoomOut" aria-label="축소">−</button>
-        <input type="range" id="zoom" min="1" max="12" step="1" aria-label="타임라인 확대">
+        <input type="range" id="zoom" min="1" max="30" step="1" aria-label="타임라인 확대">
         <button type="button" class="icon-btn icon-btn-sm" id="btnZoomIn" aria-label="확대">+</button>
       </div>
     </div>
