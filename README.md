@@ -2,48 +2,52 @@
 
 Prompt-driven video editor for macOS — describe the edit, AI plans it, ffmpeg renders it.
 
-대화로 지시하면 AI가 편집 계획을 세우고 ffmpeg가 영상을 만드는 Mac용 영상 편집기입니다.
+## Status
 
-## 상태
+Planning stage. No implementation yet.
 
-기획 단계입니다. 아직 구현된 코드는 없습니다.
+## How it works
 
-## 동작 방식
+1. Add several video files. Originals stay where they are; only their paths are stored.
+2. ffprobe reads the recording date, duration, resolution and rotation; thumbnails and a low-resolution proxy are generated.
+3. Type a request in the chat panel, for example "join these in date order and add a date caption".
+4. The AI returns an edit plan as JSON. Review it, then run it.
+5. ffmpeg trims, joins, captions and mixes audio according to the plan, producing a new file.
 
-1. 영상 여러 개를 불러옵니다. 파일은 원본 위치에 그대로 두고 경로만 기억합니다.
-2. ffprobe로 촬영일, 길이, 해상도, 회전 정보를 읽고, 썸네일과 저해상도 미리보기를 만듭니다.
-3. 대화창에 요청을 입력합니다. 예: "시간순으로 이어붙이고 날짜 자막 넣어 줘"
-4. AI가 편집 계획(JSON)을 만들어 보여 줍니다. 확인한 뒤 실행합니다.
-5. ffmpeg가 계획대로 자르고 이어붙이고 자막과 음악을 입혀 새 영상을 만듭니다.
+Originals are never modified. Actual encoding happens only on preview render and export.
 
-원본은 변경하지 않습니다. 실제 합성은 미리보기 렌더와 내보내기 단계에서만 일어납니다.
+## Scope (first release)
 
-## 기능 범위 (1차)
+- Automatic ordering by recording date, manual reordering, trimming
+- Captions: date, age derived from a subject's birth date, free text
+- Transitions, color grading, resolution and orientation normalization
+- Background music with source-volume control
+- Project save and load
 
-- 촬영일 기준 자동 정렬, 순서 변경, 구간 자르기
-- 자막: 날짜, 피사체 생일 기준 나이, 직접 입력 문구
-- 전환 효과, 색감 보정, 해상도·방향 통일
-- 배경음악 삽입과 원본 음량 조절
-- 프로젝트 저장과 불러오기
+## Technical direction
 
-## 기술 방향
+- Target: macOS (Apple Silicon)
+- Engine: Python + ffmpeg, decoupled from the UI and runnable from the command line
+- UI: web front end wired to a Python backend, packaged as a Mac app
+- AI: pluggable provider. First provider is the Google AI Studio (Gemini) free API
 
-- 대상: macOS (Apple Silicon)
-- 편집 엔진: Python + ffmpeg. 화면과 분리되어 명령줄로도 실행 가능
-- 화면: 웹 기반 UI를 Python 백엔드와 연결해 Mac 앱으로 패키징
-- AI: 제공자 교체 가능한 구조. 첫 제공자는 Google AI Studio(Gemini) 무료 API
+## Design principles
 
-## 구조 원칙
+- The edit plan JSON is the only contract between the engine and every other layer. The UI, the AI layer and the command line all produce that JSON, and the engine reads nothing else.
+- Captions, transitions and color effects are separated so that adding one means adding a single file.
+- The AI call site is isolated per provider, and every response is validated before use.
+- Project files carry a schema version so older files stay readable.
 
-- 편집 계획(JSON)이 엔진과 나머지 계층 사이의 유일한 약속. AI, 화면, 명령줄 모두 이 JSON만 만들어 내고 엔진은 이 JSON만 읽습니다.
-- 자막·전환·색감 효과는 파일 하나만 추가하면 되는 단위로 분리합니다.
-- AI 호출부는 제공자별로 분리하고, 결과 JSON은 검증 후 사용합니다.
-- 프로젝트 파일에 버전 값을 넣어 형식이 바뀌어도 이전 파일을 읽을 수 있게 합니다.
+## Privacy
 
-## 개인정보
+Only metadata is sent to the AI: recording dates, durations, file names and subject details. Frame-level scene analysis, which would send extracted images, is deferred and will be opt-in.
 
-AI에 전송하는 것은 촬영일, 길이, 파일명 같은 메타데이터입니다. 영상 프레임을 전송하는 장면 분석 기능은 2차 과제이며, 켜고 끌 수 있게 만듭니다.
+## Documentation
 
-## 첫 사용 사례
+- [`doc/plan.md`](doc/plan.md) — development order and known risks
+- [`doc/workflow.md`](doc/workflow.md) — module structure, processing flow, error handling
+- [`doc/db-schema.md`](doc/db-schema.md) — SQLite schema and ERD
 
-반려견 영상을 촬영일 순서로 이어붙여, 날짜와 나이 자막을 넣은 추억 영상을 만드는 작업.
+## First use case
+
+Joining pet videos in recording-date order into a keepsake film with date and age captions.
