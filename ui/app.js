@@ -581,7 +581,7 @@ function renderTimeline() {
     node.className = 'tl-clip';
     if (clip.id === state.selectedClipId) node.classList.add('selected');
     node.style.left = `${clipStart(clip) * scale}px`;
-    node.style.width = `${Math.max(len * scale, 8)}px`;
+    node.style.width = `${Math.max(len * scale, 32)}px`;   // room for both grips
     const segments = Math.max(1, Math.round((len * scale) / 60));
     const strips = Array.from({ length: segments }, (_, i) => {
       const shade = i % 2 ? 'brightness(1.08)' : 'brightness(0.92)';

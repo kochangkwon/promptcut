@@ -339,14 +339,23 @@ audio#musicAudio { display: none; }
 .tl-clip.selected { outline: 2px solid var(--accent-line); outline-offset: -2px; }
 .tl-clip.dragging { opacity: 0.55; cursor: grabbing; }
 .tl-clip .handle {
-  position: absolute; top: 0; bottom: 0; width: 9px;
-  cursor: ew-resize; background: transparent;
+  position: absolute; top: 0; bottom: 0; width: 14px;
+  cursor: ew-resize;
   border: none; padding: 0;
+  background: rgba(0,0,0,0.42);
+  display: flex; align-items: center; justify-content: center;
 }
-.tl-clip .handle-in { left: 0; }
-.tl-clip .handle-out { right: 0; }
-.tl-clip:hover .handle { background: rgba(255,255,255,0.22); }
-.tl-clip .handle:hover, .tl-clip .handle.active { background: var(--accent-line) !important; }
+.tl-clip .handle::before {
+  content: ""; width: 2px; height: 26px; border-radius: 1px;
+  background: rgba(255,255,255,0.85);
+}
+.tl-clip .handle-in { left: 0; border-radius: 5px 0 0 5px; }
+.tl-clip .handle-out { right: 0; border-radius: 0 5px 5px 0; }
+.tl-clip:hover .handle { background: rgba(0,0,0,0.6); }
+.tl-clip.selected .handle { background: var(--accent-line); }
+.tl-clip.selected .handle::before { background: #10161f; }
+.tl-clip .handle:hover, .tl-clip .handle.active { background: var(--accent-line); }
+.tl-clip .handle:hover::before, .tl-clip .handle.active::before { background: #10161f; }
 
 /* both sit in .track-area, so the offset clears the 24px ruler + 8px gap */
 .drop-marker {
