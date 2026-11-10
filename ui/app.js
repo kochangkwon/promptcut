@@ -838,7 +838,7 @@ function overTrack(e) {
          e.clientY >= r.top - 24 && e.clientY <= r.bottom + 24;
 }
 
-/** Index in state.clips where a drop at this track-x would land. */
+/** Where a drop at this track-x lands, for a clip coming from the library. */
 function insertIndexAt(x) {
   const scale = pxPerMs();
   let acc = 0;
@@ -850,18 +850,52 @@ function insertIndexAt(x) {
   return state.clips.length;
 }
 
-function boundaryPx(index) {
+/**
+ * Destination index while reordering: how many other clips have their centre
+ * left of the dragged clip's LEADING edge, measured in the original layout.
+ *
+ * The leading edge is the right one when dragging right, the left one when
+ * dragging left, so a clip swaps once it covers half its neighbour — the same
+ * feel as iMovie. Two tempting alternatives are worse: the raw pointer makes a
+ * long clip feel stuck (the pointer has to cross the neighbour's midpoint,
+ * which is the clip's own half-width away), and a layout with the clip already
+ * lifted out reads as displaced before it has moved at all. Both edges are
+ * stable at rest, so no drag starts by reordering.
+ */
+function moveIndexFor(clipId, newLeftPx, width, dx) {
+  const scale = pxPerMs();
+  const probe = dx >= 0 ? newLeftPx + width : newLeftPx;
   let acc = 0;
-  for (let i = 0; i < index && i < state.clips.length; i++) acc += clipLength(state.clips[i]);
+  let count = 0;
+  for (const c of state.clips) {
+    const len = clipLength(c);
+    if (c.id !== clipId && (acc + len / 2) * scale < probe) count += 1;
+    acc += len;
+  }
+  return count;
+}
+
+function boundaryPx(index, skipId) {
+  const others = skipId ? state.clips.filter((c) => c.id !== skipId) : state.clips;
+  let acc = 0;
+  for (let i = 0; i < index && i < others.length; i++) acc += clipLength(others[i]);
   return acc * pxPerMs();
 }
 
 function beginDrag(e, info) {
   if (e.button !== 0) return;
-  drag = { ...info, startX: e.clientX, index: null, preview: null };
+  drag = {
+    ...info,
+    startX: e.clientX,
+    index: null,
+    preview: null,
+    startLeft: info.node ? info.node.offsetLeft : 0,
+    width: info.node ? info.node.offsetWidth : 0
+  };
   dragMoved = false;
   window.addEventListener('pointermove', onDragMove);
   window.addEventListener('pointerup', onDragEnd, { once: true });
+  window.addEventListener('pointercancel', onDragEnd, { once: true });
 }
 
 function onDragMove(e) {
@@ -881,11 +915,14 @@ function onDragMove(e) {
     if (drag.mode === 'move') {
       drag.node.classList.add('dragging');
       drag.node.style.transform = `translateX(${dx}px)`;
+      // judge by where the clip's centre now sits, not by the pointer
+      drag.index = moveIndexFor(drag.clipId, drag.startLeft + dx, drag.width, dx);
+    } else {
+      drag.index = insertIndexAt(trackX(e.clientX));
     }
-    drag.index = insertIndexAt(trackX(e.clientX));
     el.trackVideo.classList.add('drop-target');
     el.dropMarker.classList.add('on');
-    el.dropMarker.style.left = `${boundaryPx(drag.index)}px`;
+    el.dropMarker.style.left = `${boundaryPx(drag.index, drag.mode === 'move' ? drag.clipId : null)}px`;
     return;
   }
 
@@ -931,13 +968,11 @@ function onDragEnd() {
 
   if (d.mode === 'move' && d.index !== null) {
     const from = state.clips.findIndex((c) => c.id === d.clipId);
-    let to = d.index;
     if (from >= 0) {
-      if (to > from) to -= 1;          // the gap closes once the clip is lifted
-      if (to !== from) {
-        const [moved] = state.clips.splice(from, 1);
-        state.clips.splice(to, 0, moved);
-      }
+      // d.index was measured against the list without this clip, so it is
+      // already the destination index after the splice-out.
+      const [moved] = state.clips.splice(from, 1);
+      state.clips.splice(d.index, 0, moved);
     }
     state.selectedClipId = d.clipId;
   } else if (d.mode === 'insert' && d.index !== null) {

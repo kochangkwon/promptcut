@@ -303,7 +303,7 @@ button { cursor: pointer; }
 .track-labels .track-label:nth-child(3) { height: 38px; }
 .track-labels .track-label:nth-child(4) { height: 60px; }
 
-.track-scroll { overflow-x: auto; overflow-y: hidden; }
+.track-scroll { overflow-x: auto; overflow-y: hidden; -webkit-user-select: none; user-select: none; }
 .track-area { position: relative; min-width: 100%; }
 .ruler { position: relative; height: 24px; border-bottom: 1px solid var(--line-soft); }
 .tick {
