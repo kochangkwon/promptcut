@@ -413,6 +413,8 @@ const el = {
   trackArea: $('trackArea'),
   trackScroll: $('trackScroll'),
   playhead: $('playhead'),
+  dropMarker: $('dropMarker'),
+  trimTip: $('trimTip'),
   statusLeft: $('statusLeft'),
   statusRight: $('statusRight'),
   planDialog: $('planDialog'),
@@ -452,12 +454,45 @@ function renderMediaList() {
         <span>${m.width}×${m.height}</span>
       </div>`;
     item.title = `${m.name}\n${m.path}\n${m.video_codec} · ${m.fps}fps${m.has_audio ? '' : ' · 무음'}`;
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'media-remove';
+    remove.textContent = '×';
+    remove.ariaLabel = `${m.name} 목록에서 제거`;
+    remove.addEventListener('click', (e) => { e.stopPropagation(); removeMedia(m.id); });
+    item.append(remove);
+
     item.addEventListener('click', () => {
+      if (dragMoved) return;               // the pointerup that ended a drag
       if (clip) selectClip(clip.id);
       else addClipFromMedia(m.id);
     });
+    item.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('.media-remove')) return;
+      beginDrag(e, { mode: 'insert', mediaId: m.id });
+    });
     return item;
   }));
+}
+
+/** Removes a file from the library, and any clip using it. */
+function removeMedia(mediaId) {
+  const media = state.media.find((m) => m.id === mediaId);
+  const inUse = state.clips.filter((c) => c.mediaId === mediaId);
+  if (inUse.length) {
+    const ok = window.confirm(
+      `${media ? media.name : '이 영상'} 은(는) 타임라인에서 사용 중입니다.\n` +
+      `목록에서 제거하면 타임라인의 클립 ${inUse.length}개도 함께 빠집니다.\n\n` +
+      `원본 파일은 삭제되지 않습니다.`
+    );
+    if (!ok) return;
+  }
+  state.media = state.media.filter((m) => m.id !== mediaId);
+  state.clips = state.clips.filter((c) => c.mediaId !== mediaId);
+  if (!state.clips.some((c) => c.id === state.selectedClipId)) state.selectedClipId = null;
+  clampPlayhead();
+  renderAll();
 }
 
 function renderSettings() {
@@ -542,11 +577,23 @@ function renderTimeline() {
     }).join('');
     node.innerHTML = `${strips}
       <span class="clip-label">${media ? fmtDate(media.recorded_at) : '?'} · ${fmtTime(len)}</span>
-      ${clip.mute ? '<span class="clip-mute">무음</span>' : ''}`;
+      ${clip.mute ? '<span class="clip-mute">무음</span>' : ''}
+      <span class="handle handle-in" aria-hidden="true"></span>
+      <span class="handle handle-out" aria-hidden="true"></span>`;
+    node.dataset.clipId = clip.id;
     node.addEventListener('click', (e) => {
       e.stopPropagation();
+      if (dragMoved) return;
       selectClip(clip.id);
       setPlayhead(clipStart(clip));
+    });
+    node.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      const handle = e.target.closest('.handle');
+      const mode = !handle ? 'move'
+        : handle.classList.contains('handle-in') ? 'trim-in' : 'trim-out';
+      if (handle) handle.classList.add('active');
+      beginDrag(e, { mode, clipId: clip.id, node, handle });
     });
     return node;
   }));
@@ -632,7 +679,8 @@ function renderPreview() {
 function renderInspector() {
   const clip = state.clips.find((c) => c.id === state.selectedClipId);
   if (!clip) {
-    el.inspector.innerHTML = '<p class="inspector-empty">클립을 선택하면 구간과 자막을 고칠 수 있습니다.</p>';
+    el.inspector.innerHTML = '<p class="inspector-empty">클립을 선택하면 구간과 자막을 고칠 수 있습니다. ' +
+      '타임라인에서 클립을 끌면 순서가 바뀌고, 좌우 가장자리를 끌면 길이가 조절됩니다.</p>';
     return;
   }
   const media = mediaOf(clip);
@@ -774,6 +822,141 @@ function moveClip(id, delta) {
   if (i < 0 || j < 0 || j >= state.clips.length) return;
   [state.clips[i], state.clips[j]] = [state.clips[j], state.clips[i]];
   renderAll();
+}
+
+/* ---------------------------------------------------------- drag edits */
+
+const DRAG_THRESHOLD = 4;
+let drag = null;
+let dragMoved = false;   // suppresses the click that follows a real drag
+
+const trackX = (clientX) => clientX - el.trackArea.getBoundingClientRect().left;
+
+function overTrack(e) {
+  const r = el.trackScroll.getBoundingClientRect();
+  return e.clientX >= r.left && e.clientX <= r.right &&
+         e.clientY >= r.top - 24 && e.clientY <= r.bottom + 24;
+}
+
+/** Index in state.clips where a drop at this track-x would land. */
+function insertIndexAt(x) {
+  const scale = pxPerMs();
+  let acc = 0;
+  for (let i = 0; i < state.clips.length; i++) {
+    const len = clipLength(state.clips[i]);
+    if (x < (acc + len / 2) * scale) return i;
+    acc += len;
+  }
+  return state.clips.length;
+}
+
+function boundaryPx(index) {
+  let acc = 0;
+  for (let i = 0; i < index && i < state.clips.length; i++) acc += clipLength(state.clips[i]);
+  return acc * pxPerMs();
+}
+
+function beginDrag(e, info) {
+  if (e.button !== 0) return;
+  drag = { ...info, startX: e.clientX, index: null, preview: null };
+  dragMoved = false;
+  window.addEventListener('pointermove', onDragMove);
+  window.addEventListener('pointerup', onDragEnd, { once: true });
+}
+
+function onDragMove(e) {
+  if (!drag) return;
+  const dx = e.clientX - drag.startX;
+  if (!dragMoved && Math.abs(dx) < DRAG_THRESHOLD) return;
+  dragMoved = true;
+  e.preventDefault();
+
+  if (drag.mode === 'move' || drag.mode === 'insert') {
+    if (drag.mode === 'insert' && !overTrack(e)) {
+      drag.index = null;
+      el.dropMarker.classList.remove('on');
+      el.trackVideo.classList.remove('drop-target');
+      return;
+    }
+    if (drag.mode === 'move') {
+      drag.node.classList.add('dragging');
+      drag.node.style.transform = `translateX(${dx}px)`;
+    }
+    drag.index = insertIndexAt(trackX(e.clientX));
+    el.trackVideo.classList.add('drop-target');
+    el.dropMarker.classList.add('on');
+    el.dropMarker.style.left = `${boundaryPx(drag.index)}px`;
+    return;
+  }
+
+  const clip = state.clips.find((c) => c.id === drag.clipId);
+  if (!clip) return;
+  const media = mediaOf(clip);
+  const deltaMs = Math.round(dx / pxPerMs());
+  const scale = pxPerMs();
+
+  if (drag.mode === 'trim-in') {
+    const next = Math.max(0, Math.min(clip.in_ms + deltaMs, clip.out_ms - 200));
+    drag.preview = { in_ms: next, out_ms: clip.out_ms };
+    drag.node.style.width = `${Math.max((clip.out_ms - next) * scale, 8)}px`;
+    showTrimTip(drag.node, `시작 ${(next / 1000).toFixed(1)}초 · 길이 ${fmtTime(clip.out_ms - next)}`);
+  } else {
+    const max = media ? media.duration_ms : clip.out_ms;
+    const next = Math.min(max, Math.max(clip.out_ms + deltaMs, clip.in_ms + 200));
+    drag.preview = { in_ms: clip.in_ms, out_ms: next };
+    drag.node.style.width = `${Math.max((next - clip.in_ms) * scale, 8)}px`;
+    showTrimTip(drag.node, `끝 ${(next / 1000).toFixed(1)}초 · 길이 ${fmtTime(next - clip.in_ms)}`);
+  }
+}
+
+function showTrimTip(node, text) {
+  el.trimTip.textContent = text;
+  el.trimTip.classList.add('on');
+  el.trimTip.style.left = `${node.offsetLeft}px`;
+}
+
+function onDragEnd() {
+  window.removeEventListener('pointermove', onDragMove);
+  el.dropMarker.classList.remove('on');
+  el.trimTip.classList.remove('on');
+  el.trackVideo.classList.remove('drop-target');
+  if (drag && drag.handle) drag.handle.classList.remove('active');
+
+  const d = drag;
+  drag = null;
+  if (!d || !dragMoved) {
+    setTimeout(() => { dragMoved = false; }, 0);
+    return;
+  }
+
+  if (d.mode === 'move' && d.index !== null) {
+    const from = state.clips.findIndex((c) => c.id === d.clipId);
+    let to = d.index;
+    if (from >= 0) {
+      if (to > from) to -= 1;          // the gap closes once the clip is lifted
+      if (to !== from) {
+        const [moved] = state.clips.splice(from, 1);
+        state.clips.splice(to, 0, moved);
+      }
+    }
+    state.selectedClipId = d.clipId;
+  } else if (d.mode === 'insert' && d.index !== null) {
+    const clip = makeClip(d.mediaId);
+    state.clips.splice(d.index, 0, clip);
+    state.selectedClipId = clip.id;
+  } else if (d.preview) {
+    const clip = state.clips.find((c) => c.id === d.clipId);
+    if (clip) {
+      clip.in_ms = d.preview.in_ms;
+      clip.out_ms = d.preview.out_ms;
+      rebuildCaptions(clip);
+      state.selectedClipId = clip.id;
+    }
+  }
+
+  clampPlayhead();
+  renderAll();
+  setTimeout(() => { dragMoved = false; }, 0);   // after the trailing click
 }
 
 function setPlayhead(ms) {

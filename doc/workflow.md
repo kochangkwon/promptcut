@@ -113,6 +113,17 @@ A preview render runs the same pipeline at low resolution with fast settings. Pr
 3. An inspector shows file name, recording date, duration, in and out points, caption text and an exclude button.
 4. Subsequent chat requests are interpreted against this clip.
 
+### Rearranging on the timeline
+
+1. Dragging a clip sideways shows an insertion marker at the nearest boundary; releasing moves the clip there.
+2. Dragging a clip's left or right edge trims its in or out point, with a readout of the new value and resulting length. The out point is capped at the source's duration.
+3. Dragging a file from the library onto the timeline inserts it at the drop position. Released outside the track, nothing is inserted.
+4. The same operations are available without a mouse: the inspector's in and out fields, its order buttons, and chat requests.
+
+### Removing
+
+Removing a clip from the timeline leaves the file in the library, greyed out, ready to be used again. Removing a file from the library also removes every clip that uses it, after a confirmation. Neither action touches the file on disk — the program never deletes source video.
+
 ### Changing settings
 
 Changing subjects, background music or caption style updates the plan and the timeline immediately. No video file is touched.
